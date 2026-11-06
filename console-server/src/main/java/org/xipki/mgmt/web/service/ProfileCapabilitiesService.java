@@ -1,6 +1,7 @@
-// Copyright (c) 2026 trustasia-com. All rights reserved.
-// License Apache License 2.0
-
+/**
+ * Copyright (c) 2026 trustasia-com. All rights reserved.
+ * License Apache License 2.0
+ */
 package org.xipki.mgmt.web.service;
 
 import java.util.LinkedHashSet;
@@ -10,6 +11,7 @@ import org.xipki.codec.json.JsonParser;
 import org.xipki.mgmt.web.ca.CaDomain.*;
 import org.xipki.mgmt.web.ca.CaManager;
 import org.xipki.mgmt.web.core.*;
+import org.xipki.mgmt.web.service.ProfileCapabilities.CertLevel;
 
 /**
  * Resolves capabilities from the actual XiPKI profile entry, never from its name.
@@ -24,23 +26,29 @@ public class ProfileCapabilitiesService {
   }
 
   public ProfileCapabilities describe(String profileName) {
-    if (profileName == null || profileName.isBlank()) return unknown("Profile name is required");
+    if (profileName == null || profileName.isBlank()) {
+      return unknown("Profile name is required");
+    }
     try {
       CertprofileEntry entry = manager.getCertprofile(profileName);
-      if (entry == null || entry.isFaulty())
+      if (entry == null || entry.isFaulty()) {
         return unknown("Unknown or faulty certificate profile");
-      if (!"xijson".equalsIgnoreCase(entry.getType()))
+      }
+      if (!"xijson".equalsIgnoreCase(entry.getType())) {
         return unknown("Profile type does not expose a supported certificate level");
+      }
       JsonMap root = JsonParser.parseMap(entry.getConf(), false);
       String rawLevel = root.getString("certLevel");
-      if (rawLevel == null) rawLevel = "";
-      ProfileCapabilities.CertLevel level =
+      if (rawLevel == null) {
+        rawLevel = "";
+      }
+      CertLevel level =
           switch (rawLevel) {
-            case "RootCA" -> ProfileCapabilities.CertLevel.ROOT_CA;
-            case "SubCA" -> ProfileCapabilities.CertLevel.SUB_CA;
-            case "EndEntity" -> ProfileCapabilities.CertLevel.END_ENTITY;
-            case "CROSS", "Cross" -> ProfileCapabilities.CertLevel.CROSS;
-            default -> ProfileCapabilities.CertLevel.UNKNOWN;
+            case "RootCA" -> CertLevel.ROOT_CA;
+            case "SubCA" -> CertLevel.SUB_CA;
+            case "EndEntity" -> CertLevel.END_ENTITY;
+            case "CROSS", "Cross" -> CertLevel.CROSS;
+            default -> CertLevel.UNKNOWN;
           };
       JsonMap basicConstraints = root.getMap("basicConstraints");
       if (basicConstraints == null && root.getList("extensions") != null) {
@@ -56,26 +64,26 @@ public class ProfileCapabilitiesService {
         Object value = basicConstraints.getObject("pathLen");
         if (!(value instanceof Long || value instanceof Integer)
             || ((Number) value).longValue() < 0
-            || ((Number) value).longValue() > Integer.MAX_VALUE)
+            || ((Number) value).longValue() > Integer.MAX_VALUE) {
           return unknown("Invalid profile path length");
+        }
         pathLen = ((Number) value).intValue();
       }
       Set<String> algorithms = new LinkedHashSet<>();
-      if (root.getList("keyAlgorithms") != null)
+      if (root.getList("keyAlgorithms") != null) {
         algorithms.addAll(root.getList("keyAlgorithms").toStringList());
+      }
       return new ProfileCapabilities(
           level,
           pathLen,
           Set.copyOf(algorithms),
-          level == ProfileCapabilities.CertLevel.UNKNOWN
-              ? "Unsupported or missing certLevel"
-              : null);
+          level == CertLevel.UNKNOWN ? "Unsupported or missing certLevel" : null);
     } catch (Exception ex) {
       return unknown("Certificate profile configuration is invalid");
     }
   }
 
   private static ProfileCapabilities unknown(String message) {
-    return new ProfileCapabilities(ProfileCapabilities.CertLevel.UNKNOWN, null, Set.of(), message);
+    return new ProfileCapabilities(CertLevel.UNKNOWN, null, Set.of(), message);
   }
 }

@@ -1,6 +1,7 @@
-// Copyright (c) 2026 trustasia-com. All rights reserved.
-// License Apache License 2.0
-
+/**
+ * Copyright (c) 2026 trustasia-com. All rights reserved.
+ * License Apache License 2.0
+ */
 package org.xipki.mgmt.web.controller;
 
 import jakarta.servlet.http.HttpServletRequest;
@@ -24,7 +25,9 @@ import org.xipki.mgmt.web.security.AccessControl;
 import org.xipki.mgmt.web.security.CertificateOwnership;
 import org.xipki.mgmt.web.service.CaManagementService;
 import org.xipki.mgmt.web.service.CertificateMaterial;
+import org.xipki.mgmt.web.service.ProfileOperationLock;
 import org.xipki.pkix.util.misc.PemEncoder;
+import org.xipki.pkix.util.misc.PemEncoder.PemLabel;
 
 /**
  * Certificate management controller.
@@ -57,44 +60,60 @@ public class CertController {
       throws CaMgmtException {
 
     CertificateMaterial.required(ca);
-    if (limit < 1 || limit > 1000) throw new IllegalArgumentException("Invalid query limit");
+    if (limit < 1 || limit > 1000) {
+      throw new IllegalArgumentException("Invalid query limit");
+    }
     X500Principal subjectPattern =
         (subject != null && !subject.isEmpty()) ? new X500Principal(subject) : null;
     String subjectGlob = subjectPattern == null ? null : subjectGlob(subjectPattern);
-    if (subjectGlob != null && subjectGlob.indexOf('%') >= 0)
+    if (subjectGlob != null && subjectGlob.indexOf('%') >= 0) {
       throw new IllegalArgumentException("Invalid subject pattern");
+    }
     Instant from = CertificateMaterial.time(validFrom);
     Instant to = CertificateMaterial.time(validTo);
     CertificateMaterial.range(from, to);
     CertListOrderBy order = CertListOrderBy.forValue(orderBy);
-    if (order == null) throw new IllegalArgumentException("Invalid query order");
+    if (order == null) {
+      throw new IllegalArgumentException("Invalid query order");
+    }
     var identity = access.require("CERT_READ", ca, null);
     ca = identity.name();
     service.requireStarted(ca);
     if (!access.allows("CERT_READ_ALL", identity, null)) {
-      if (!paged && cursor != null)
+      if (!paged && cursor != null) {
         throw new IllegalArgumentException("Cursor requires paged search");
+      }
       List<String> serials;
       if (paged) {
         var page = ownership.page(identity, cursor);
-        if (page.nextCursor() != null) response.setHeader("X-Next-Cursor", page.nextCursor());
+        if (page.nextCursor() != null) {
+          response.setHeader("X-Next-Cursor", page.nextCursor());
+        }
         serials = page.serials();
       } else {
         serials = ownership.serials(identity, 1001);
-        if (serials.size() > 1000)
+        if (serials.size() > 1000) {
           throw new ApiException(
               409, "Certificate history exceeds the legacy query limit; use paged=true");
+        }
       }
       var own = new ArrayList<CertDto>();
       for (String serial : serials) {
         var info = service.getCaManager().getCert(ca, CertificateMaterial.serial(serial));
-        if (info == null) continue;
-        var cert = info.getCert().getCert();
-        if (subjectGlob != null && !matchesSubject(subjectGlob, cert.getSubjectText())) continue;
-        // Match XiPKI's listCertificates predicates, including its second-level bounds.
-        if (from != null && cert.getNotBefore().getEpochSecond() >= from.getEpochSecond() - 1)
+        if (info == null) {
           continue;
-        if (to != null && cert.getNotAfter().getEpochSecond() <= to.getEpochSecond()) continue;
+        }
+        var cert = info.getCert().getCert();
+        if (subjectGlob != null && !matchesSubject(subjectGlob, cert.getSubjectText())) {
+          continue;
+        }
+        // Match XiPKI's listCertificates predicates, including its second-level bounds.
+        if (from != null && cert.getNotBefore().getEpochSecond() >= from.getEpochSecond() - 1) {
+          continue;
+        }
+        if (to != null && cert.getNotAfter().getEpochSecond() <= to.getEpochSecond()) {
+          continue;
+        }
         own.add(CertDto.fromCertWithRevocation(info));
       }
       Comparator<CertDto> comparator =
@@ -106,8 +125,9 @@ public class CertController {
       own.sort(orderBy.endsWith("-desc") ? comparator.reversed() : comparator);
       return ApiResponse.ok(own.stream().limit(limit).toList());
     }
-    if (cursor != null)
+    if (cursor != null) {
       throw new IllegalArgumentException("Cursor is only valid for personal certificates");
+    }
 
     List<CertListInfo> certs =
         service.getCaManager().listCertificates(ca, subjectPattern, from, to, order, limit);
@@ -148,7 +168,9 @@ public class CertController {
         return false;
       }
     }
-    while (p < pattern.length() && pattern.charAt(p) == '*') p++;
+    while (p < pattern.length() && pattern.charAt(p) == '*') {
+      p++;
+    }
     return p == pattern.length();
   }
 
@@ -172,7 +194,7 @@ public class CertController {
       throws Exception {
 
     CertificateMaterial.checkRequestSize(request.getContentLengthLong());
-    try (var guard = org.xipki.mgmt.web.service.ProfileOperationLock.issuance()) {
+    try (var guard = ProfileOperationLock.issuance()) {
       CertificateMaterial.required(ca);
       CertificateMaterial.required(profile);
       byte[] csrBytes = CertificateMaterial.csr(csrFile);
@@ -199,7 +221,7 @@ public class CertController {
       String notBefore,
       String notAfter)
       throws Exception {
-    try (var guard = org.xipki.mgmt.web.service.ProfileOperationLock.issuance()) {
+    try (var guard = ProfileOperationLock.issuance()) {
       CertificateMaterial.checkRequestSize(request.getContentLengthLong());
       CertificateMaterial.required(ca);
       CertificateMaterial.required(profile);
@@ -228,14 +250,14 @@ public class CertController {
     dto.setNotAfter(cert.getNotAfter().toString());
     dto.setCertPem(
         new String(
-            PemEncoder.encode(cert.getEncoded(), PemEncoder.PemLabel.CERTIFICATE),
+            PemEncoder.encode(cert.getEncoded(), PemLabel.CERTIFICATE),
             StandardCharsets.UTF_8));
     return dto;
   }
 
   public Reply<byte[]> downloadKeyCert(HttpServletRequest request, KeyCertDownloadRequest body)
       throws Exception {
-    try (var guard = org.xipki.mgmt.web.service.ProfileOperationLock.issuance()) {
+    try (var guard = ProfileOperationLock.issuance()) {
       CertificateMaterial.checkRequestSize(request.getContentLengthLong());
       CertificateMaterial.required(body.getCa());
       CertificateMaterial.required(body.getProfile());
@@ -253,16 +275,10 @@ public class CertController {
       var pair =
           manager.generateKeyCert(grant.ca().name(), grant.profile(), body.getSubject(), nb, na);
       AuditTargetCapture.identify(
-          request,
-          "serial",
-          org.xipki.mgmt.web.ca.Crypto.X509Util.parseCert(pair.getCert())
-              .getSerialNumber()
-              .toString(16));
+          request, "serial", X509Util.parseCert(pair.getCert()).getSerialNumber().toString(16));
       ownership.record(
           grant.ca(),
-          org.xipki.mgmt.web.ca.Crypto.X509Util.parseCert(pair.getCert())
-              .getSerialNumber()
-              .toString(16),
+          X509Util.parseCert(pair.getCert()).getSerialNumber().toString(16),
           grant.profile());
       char[] password = body.getDownloadPassword().toCharArray();
       body.setDownloadPassword(null);
@@ -272,9 +288,7 @@ public class CertController {
           .header("Cache-Control", "no-store")
           .header(
               "X-Certificate-Serial",
-              org.xipki.mgmt.web.ca.Crypto.X509Util.parseCert(pair.getCert())
-                  .getSerialNumber()
-                  .toString(16))
+              X509Util.parseCert(pair.getCert()).getSerialNumber().toString(16))
           .header("Content-Disposition", "attachment; filename=\"key-certificate.p12\"")
           .body(pkcs12);
     }
@@ -290,7 +304,7 @@ public class CertController {
       String notAfter)
       throws Exception {
 
-    try (var guard = org.xipki.mgmt.web.service.ProfileOperationLock.issuance()) {
+    try (var guard = ProfileOperationLock.issuance()) {
       response.setHeader("Cache-Control", "no-store");
       CertificateMaterial.required(ca);
       CertificateMaterial.required(profile);
@@ -304,17 +318,9 @@ public class CertController {
       CertificateMaterial.requireKeypairGenerator(service.getCaManager(), ca);
       KeyCertBytesPair pair = service.getCaManager().generateKeyCert(ca, profile, subject, nb, na);
       AuditTargetCapture.identify(
-          request,
-          "serial",
-          org.xipki.mgmt.web.ca.Crypto.X509Util.parseCert(pair.getCert())
-              .getSerialNumber()
-              .toString(16));
+          request, "serial", X509Util.parseCert(pair.getCert()).getSerialNumber().toString(16));
       ownership.record(
-          grant.ca(),
-          org.xipki.mgmt.web.ca.Crypto.X509Util.parseCert(pair.getCert())
-              .getSerialNumber()
-              .toString(16),
-          profile);
+          grant.ca(), X509Util.parseCert(pair.getCert()).getSerialNumber().toString(16), profile);
 
       Map<String, String> result = new LinkedHashMap<>();
       result.put("cert", Base64.getEncoder().encodeToString(pair.getCert()));
@@ -326,8 +332,9 @@ public class CertController {
   public ApiResponse<Void> revokeCert(String ca, String serial, Map<String, String> request)
       throws CaMgmtException {
     BigInteger serialNumber = CertificateMaterial.serial(serial);
-    if (!Set.of("reason", "invalidityTime").containsAll(request.keySet()))
+    if (!Set.of("reason", "invalidityTime").containsAll(request.keySet())) {
       throw new IllegalArgumentException("Unsupported revoke field");
+    }
     String reasonStr = request.getOrDefault("reason", "unspecified");
     CrlReason reason = CrlReason.forNameOrText(reasonStr);
     ca =
@@ -336,12 +343,14 @@ public class CertController {
                 reason == CrlReason.CERTIFICATE_HOLD ? "CERT_SUSPEND" : "CERT_REVOKE", ca, null)
             .name();
     service.requireStarted(ca);
-    if (reason == CrlReason.REMOVE_FROM_CRL)
+    if (reason == CrlReason.REMOVE_FROM_CRL) {
       throw new IllegalArgumentException("Use unsuspend for held certificates");
+    }
     String invTimeStr = request.get("invalidityTime");
     Instant invalidityTime = CertificateMaterial.time(invTimeStr);
-    if (invalidityTime != null && invalidityTime.isAfter(Instant.now()))
+    if (invalidityTime != null && invalidityTime.isAfter(Instant.now())) {
       throw new IllegalArgumentException("Future invalidity time");
+    }
 
     service.getCaManager().revokeCertificate(ca, serialNumber, reason, invalidityTime);
     return ApiResponse.ok();
@@ -365,8 +374,9 @@ public class CertController {
 
   public Reply<byte[]> downloadCert(String ca, String serial, String format) throws Exception {
     BigInteger serialNumber = CertificateMaterial.serial(serial);
-    if (!Set.of("pem", "der").contains(format.toLowerCase(Locale.ROOT)))
+    if (!Set.of("pem", "der").contains(format.toLowerCase(Locale.ROOT))) {
       throw new IllegalArgumentException("Invalid certificate format");
+    }
     ca = requireRead(ca, serialNumber);
     CertWithRevocationInfo info = service.getCaManager().getCert(ca, serialNumber);
     if (info == null) {
@@ -378,7 +388,7 @@ public class CertController {
     String mediaType;
 
     if ("pem".equalsIgnoreCase(format)) {
-      encoded = PemEncoder.encode(encoded, PemEncoder.PemLabel.CERTIFICATE);
+      encoded = PemEncoder.encode(encoded, PemLabel.CERTIFICATE);
       filename += ".pem";
       mediaType = "text/plain";
     } else {
@@ -395,8 +405,9 @@ public class CertController {
   private String requireRead(String ca, BigInteger serial) throws CaMgmtException {
     var identity = access.require("CERT_READ", ca, null);
     if (!access.allows("CERT_READ_ALL", identity, null)
-        && !ownership.owns(identity, serial.toString(16)))
+        && !ownership.owns(identity, serial.toString(16))) {
       throw new AccessDeniedException("Permission denied");
+    }
     service.requireStarted(identity.name());
     return identity.name();
   }

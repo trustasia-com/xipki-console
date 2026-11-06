@@ -1,13 +1,16 @@
-// Copyright (c) 2026 trustasia-com. All rights reserved.
-// License Apache License 2.0
-
+/**
+ * Copyright (c) 2026 trustasia-com. All rights reserved.
+ * License Apache License 2.0
+ */
 package org.xipki.mgmt.web;
 
 import static org.junit.jupiter.api.Assertions.*;
 
 import java.io.ByteArrayInputStream;
 import java.lang.reflect.Proxy;
+import java.math.BigInteger;
 import java.security.KeyStore;
+import java.time.Instant;
 import java.util.*;
 import javax.security.auth.x500.X500Principal;
 import org.junit.jupiter.api.Test;
@@ -17,6 +20,7 @@ import org.xipki.mgmt.web.ca.CaManager;
 import org.xipki.mgmt.web.core.ApiException;
 import org.xipki.mgmt.web.dto.*;
 import org.xipki.mgmt.web.service.*;
+import org.xipki.mgmt.web.service.ProfileCapabilities.CertLevel;
 
 /**
  * Domain contract tests.
@@ -160,8 +164,9 @@ class DomainContractsTest {
                 getClass().getClassLoader(),
                 new Class<?>[] {CaManager.class},
                 (proxy, method, args) -> {
-                  if (!method.getName().equals("getCertprofile"))
+                  if (!method.getName().equals("getCertprofile")) {
                     throw new UnsupportedOperationException();
+                  }
                   String name = (String) args[0];
                   return profiles.containsKey(name)
                       ? new CertprofileEntry(new NameId(null, name), "xijson", profiles.get(name))
@@ -169,12 +174,13 @@ class DomainContractsTest {
                 });
     var service = new ProfileCapabilitiesService(manager);
     var sub = service.describe("sub");
-    assertEquals(ProfileCapabilities.CertLevel.SUB_CA, sub.level());
+    assertEquals(CertLevel.SUB_CA, sub.level());
     assertEquals(0, sub.pathLenConstraint());
     assertEquals(Set.of("RSA2048"), sub.keyAlgorithms());
-    assertEquals(ProfileCapabilities.CertLevel.ROOT_CA, service.describe("root").level());
-    for (var name : List.of("bad", "decimal", "missing"))
-      assertEquals(ProfileCapabilities.CertLevel.UNKNOWN, service.describe(name).level());
+    assertEquals(CertLevel.ROOT_CA, service.describe("root").level());
+    for (var name : List.of("bad", "decimal", "missing")) {
+      assertEquals(CertLevel.UNKNOWN, service.describe(name).level());
+    }
   }
 
   @Test
@@ -226,12 +232,11 @@ class DomainContractsTest {
   void certificateSerialAndTimesAreStrictBeforeRemoteMutation() {
     assertThrows(IllegalArgumentException.class, () -> CertificateMaterial.serial("-1"));
     assertThrows(IllegalArgumentException.class, () -> CertificateMaterial.serial("0"));
-    assertEquals(new java.math.BigInteger("a1", 16), CertificateMaterial.serial("a1"));
+    assertEquals(new BigInteger("a1", 16), CertificateMaterial.serial("a1"));
     assertThrows(
         IllegalArgumentException.class,
         () -> CertificateMaterial.time("2026-10-27T00:00:00+08:00"));
     assertThrows(
-        IllegalArgumentException.class,
-        () -> CertificateMaterial.range(java.time.Instant.MAX, java.time.Instant.MIN));
+        IllegalArgumentException.class, () -> CertificateMaterial.range(Instant.MAX, Instant.MIN));
   }
 }

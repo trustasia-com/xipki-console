@@ -1,8 +1,17 @@
+/**
+ * Copyright (c) 2026 trustasia-com. All rights reserved.
+ * License Apache License 2.0
+ */
+
 import dayjs, { type Dayjs } from 'dayjs'
 import type { CertificateQuery } from '../../api/cert'
 
 export type CertificateSortField = 'notBefore' | 'notAfter' | 'subject'
 export type CertificateSortDirection = 'asc' | 'desc'
+export type CertificateSort = {
+  field: CertificateSortField
+  direction: CertificateSortDirection
+}
 
 export function certificateOrder(field: CertificateSortField, direction: CertificateSortDirection) {
   return `${field}${direction === 'desc' ? '-desc' : ''}`
@@ -25,8 +34,11 @@ export function certificatePage<T>(items: T[], page: number, pageSize: number) {
 type CertificateSummary = { subject: string; notBefore: string; notAfter: string }
 type CertificatePage<T> = { data: { data: T[] }; headers?: Record<string, unknown> }
 
-export async function collectCertificatePages<T extends CertificateSummary>(query: CertificateQuery,
-  fetch: (query: CertificateQuery) => Promise<CertificatePage<T>>, current: () => boolean): Promise<T[] | undefined> {
+export async function collectCertificatePages<T extends CertificateSummary>(
+  query: CertificateQuery,
+  fetch: (query: CertificateQuery) => Promise<CertificatePage<T>>,
+  current: () => boolean,
+): Promise<T[] | undefined> {
   const items: T[] = []
   const cursors = new Set<string>()
   let cursor: string | undefined
@@ -43,8 +55,11 @@ export async function collectCertificatePages<T extends CertificateSummary>(quer
       paged = true
     }
     if (paged) {
-      const field = query.orderBy?.startsWith('subject') ? 'subject'
-        : query.orderBy?.startsWith('notAfter') ? 'notAfter' : 'notBefore'
+      const field = query.orderBy?.startsWith('subject')
+        ? 'subject'
+        : query.orderBy?.startsWith('notAfter')
+          ? 'notAfter'
+          : 'notBefore'
       const direction = query.orderBy?.endsWith('-desc') ? -1 : 1
       items.sort((a, b) => (a[field] < b[field] ? -1 : a[field] > b[field] ? 1 : 0) * direction)
       items.length = Math.min(items.length, query.limit ?? 1000)
